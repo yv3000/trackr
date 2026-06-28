@@ -145,17 +145,35 @@ func ScanFolders() ([]model.Item, []string) {
 			}
 			seen[key] = true
 
-			size, _ := DirSize(full)
 			items = append(items, model.Item{
 				Name:       e.Name(),
 				Tool:       model.ToolFolder,
 				Source:     model.SourceFolder,
 				InstallDir: full,
-				SizeBytes:  size,
 				StoreApp:   strings.Contains(key, "windowsapps"),
 			})
 		}
 	}
+
+	// Calculate folder sizes concurrently with a capped worker pool so the scan
+	// does not block serially on dozens of large directories.
+	sem := make(chan struct{}, 8)
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	for i := range items {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			sz, _ := DirSize(items[idx].InstallDir)
+			mu.Lock()
+			items[idx].SizeBytes = sz
+			mu.Unlock()
+		}(i)
+	}
+	wg.Wait()
+
 	return items, notes
 }
 

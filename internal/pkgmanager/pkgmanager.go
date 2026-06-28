@@ -79,9 +79,14 @@ func scanPip() ([]model.Item, []string) {
 	if !commandExists("pip") {
 		return nil, []string{"pip not found — skipped"}
 	}
-	out, _, err := run("pip", "list", "--format=json")
-	if err != nil || strings.TrimSpace(out) == "" {
-		return nil, []string{"pip scan failed — skipped"}
+	// Try user-installed packages first (more relevant); fall back to the full
+	// list when empty/erroring (e.g. running inside a virtualenv).
+	out, _, err := run("pip", "list", "--user", "--format=json")
+	if err != nil || strings.TrimSpace(out) == "" || strings.TrimSpace(out) == "[]" {
+		out, _, err = run("pip", "list", "--format=json")
+		if err != nil || strings.TrimSpace(out) == "" {
+			return nil, []string{"pip scan failed — skipped"}
+		}
 	}
 	var pkgs []struct {
 		Name    string `json:"name"`
@@ -90,8 +95,16 @@ func scanPip() ([]model.Item, []string) {
 	if json.Unmarshal([]byte(out), &pkgs) != nil {
 		return nil, []string{"pip output unparseable — skipped"}
 	}
+	// Filter out always-noisy base packages that users never install on purpose.
+	noisy := map[string]bool{
+		"pip": true, "setuptools": true, "wheel": true,
+		"distribute": true, "pkg_resources": true, "pkg-resources": true,
+	}
 	var items []model.Item
 	for _, p := range pkgs {
+		if noisy[strings.ToLower(p.Name)] {
+			continue
+		}
 		items = append(items, model.Item{
 			Name:       p.Name,
 			Tool:       model.ToolPip,
