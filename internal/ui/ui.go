@@ -292,10 +292,15 @@ func (m listModel) renderRow(idx int, r Row) string {
 			prefix = "  ▸ "
 		}
 	}
-	style := toneStyle(r.Tone)
 	if selected {
-		style = style.Bold(true)
+		// High-visibility selection: blue background, white text, bold.
+		selectedStyle := lipgloss.NewStyle().
+			Background(lipgloss.Color("#185FA5")).
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Bold(true)
+		return selectedStyle.Render(prefix + r.Text)
 	}
+	style := toneStyle(r.Tone)
 	return style.Render(prefix + r.Text)
 }
 
