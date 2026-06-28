@@ -162,6 +162,15 @@ func isProtectedPath(p string) (bool, string) {
 	if strings.Contains(lp, `\common files`) {
 		return true, "Common Files (shared — needs manual review)"
 	}
+	// Refuse any exact common install root (e.g. a registry entry whose
+	// InstallLocation is literally "C:\Program Files (x86)"). Deleting these
+	// would wipe out every installed program, not just the target.
+	for _, root := range filesystem.CommonInstallRoots() {
+		nr := strings.ToLower(strings.TrimRight(root, `\`))
+		if lp == nr {
+			return true, "shared install root — would remove unrelated software"
+		}
+	}
 	return false, ""
 }
 
