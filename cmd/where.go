@@ -86,14 +86,24 @@ func printWhere(it model.Item) {
 	}
 
 	// PATH entries that reference this item.
+	itemName := strings.ToLower(strings.TrimSpace(it.Name))
+	installDir := strings.ToLower(strings.TrimRight(it.InstallDir, `\/`))
+
 	for _, p := range strings.Split(os.Getenv("PATH"), string(os.PathListSeparator)) {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue
 		}
-		lp := strings.ToLower(p)
-		if (it.InstallDir != "" && strings.Contains(lp, strings.ToLower(it.InstallDir))) ||
-			strings.Contains(lp, strings.ToLower(it.Name)) {
+		lp := strings.ToLower(strings.TrimRight(p, `\/`))
+		// Match only if: the PATH entry IS or is inside the install dir,
+		// OR the last path segment exactly matches or starts with the item name.
+		lastSeg := lp
+		if i := strings.LastIndexAny(lp, `/\`); i >= 0 {
+			lastSeg = lp[i+1:]
+		}
+		isInstallDirMatch := installDir != "" && (lp == installDir || strings.HasPrefix(lp, installDir+`\`) || strings.HasPrefix(lp, installDir+`/`))
+		isNameMatch := lastSeg == itemName || strings.HasPrefix(lastSeg, itemName)
+		if isInstallDirMatch || isNameMatch {
 			line("PATH entry", p)
 		}
 	}
