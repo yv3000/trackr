@@ -77,6 +77,15 @@ func removeItem(it model.Item) error {
 		regKey = it.RegistryKey
 	}
 
+	// Detect upfront whether registry key removal will need elevation.
+	// Used to warn in dry-run and hard-block before execution.
+	needsAdmin := false
+	if regKey != "" && registry.IsHKLM(regKey) {
+		if err := registry.CanWrite(regKey); err != nil {
+			needsAdmin = true
+		}
+	}
+
 	// ----- Dry run (always shown first) -----
 	fmt.Println()
 	fmt.Println(ui.TitleStyle.Render(fmt.Sprintf("  trackr remove %s", it.Name)))
@@ -99,6 +108,10 @@ func removeItem(it model.Item) error {
 	}
 	if regKey != "" {
 		fmt.Printf("  Registry key: %s  (will remove)\n", regKey)
+	}
+	if needsAdmin {
+		fmt.Println(ui.YellowStyle.Render("  ⚠ Registry key requires administrator rights."))
+		fmt.Println(ui.YellowStyle.Render("    Run trackr from an elevated terminal, or the key will not be removed."))
 	}
 	for _, w := range warnings {
 		fmt.Println(ui.OrphanStyle.Render("  " + w))
