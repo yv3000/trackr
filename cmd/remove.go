@@ -125,6 +125,16 @@ func removeItem(it model.Item) error {
 
 	// ----- Execution -----
 	fmt.Println()
+
+	// Hard block: if registry key needs admin and we cannot get write access,
+	// stop before touching anything. User must re-run elevated.
+	if needsAdmin {
+		fmt.Println(ui.OrphanStyle.Render("  ! Registry key is under HKLM — administrator rights required."))
+		fmt.Println(ui.OrphanStyle.Render("    Re-run trackr from an elevated terminal (right-click → Run as administrator)."))
+		fmt.Println(ui.OrphanStyle.Render("    Nothing was changed."))
+		return nil
+	}
+
 	var actualFreed int64
 	switch {
 	case len(it.RemoveArgs) > 0:
