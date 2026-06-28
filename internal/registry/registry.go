@@ -61,6 +61,7 @@ func Scan() ([]model.Item, []string) {
 			version, _, _ := sub.GetStringValue("DisplayVersion")
 			loc, _, _ := sub.GetStringValue("InstallLocation")
 			uninstall, _, _ := sub.GetStringValue("UninstallString")
+			bundleCache, _, _ := sub.GetStringValue("BundleCachePath")
 			publisher, _, _ := sub.GetStringValue("Publisher")
 			instDate, _, _ := sub.GetStringValue("InstallDate")
 			estKB, _, _ := sub.GetIntegerValue("EstimatedSize")
@@ -68,9 +69,20 @@ func Scan() ([]model.Item, []string) {
 			parentKey, _, _ := sub.GetStringValue("ParentKeyName")
 			sub.Close()
 
-			// Hide OS components and update entries (KB patches register as children).
-			if sysComp == 1 || parentKey != "" {
+			// Update entries (KB patches) register as children — always hide them.
+			if parentKey != "" {
 				continue
+			}
+			// SystemComponent is a soft filter: only hide entries that look like
+			// genuine OS components (no real publisher / no install location).
+			// Otherwise keep them but flag for display.
+			isSystemComponent := false
+			if sysComp == 1 {
+				lowPub := strings.ToLower(publisher)
+				if publisher == "" || strings.Contains(lowPub, "microsoft") || strings.Trim(loc, `"`) == "" {
+					continue
+				}
+				isSystemComponent = true
 			}
 
 			item := model.Item{
@@ -83,6 +95,7 @@ func Scan() ([]model.Item, []string) {
 				Publisher:       publisher,
 				InstallDate:     instDate,
 				RegistryKey:     r.label + `\` + full,
+				SystemComponent: isSystemComponent,
 			}
 
 			// Prefer actual folder size; fall back to the registry estimate.
@@ -95,8 +108,13 @@ func Scan() ([]model.Item, []string) {
 				item.SizeBytes = int64(estKB) * 1024
 			}
 
-			// Store / UWP apps live under WindowsApps and cannot be removed normally.
-			if strings.Contains(strings.ToLower(item.InstallDir), "windowsapps") {
+			// Store / UWP apps live under WindowsApps, reference the Store via
+			// their uninstall string, or carry a BundleCachePath value. None can
+			// be removed normally — flag them so the UI points users to winget.
+			if strings.Contains(strings.ToLower(item.InstallDir), "windowsapps") ||
+				strings.Contains(strings.ToLower(item.UninstallString), "ms-windows-store:") ||
+				strings.Contains(strings.ToLower(item.UninstallString), "windowsstore") ||
+				bundleCache != "" {
 				item.StoreApp = true
 			}
 
@@ -111,6 +129,33 @@ func Scan() ([]model.Item, []string) {
 		}
 	}
 	return items, notes
+}
+
+// IsHKLM reports whether the trackr-formatted key lives under HKEY_LOCAL_MACHINE
+// (deleting such a key requires administrator rights).
+func IsHKLM(trackrKey string) bool {
+	return strings.HasPrefix(trackrKey, `HKLM\`)
+}
+
+// CanWrite verifies the key can be opened with write access, which is required
+// to delete it. Returns the underlying error (e.g. permission denied) on failure.
+func CanWrite(trackrKey string) error {
+	hive := registry.LOCAL_MACHINE
+	path := trackrKey
+	switch {
+	case strings.HasPrefix(trackrKey, `HKLM\`):
+		hive = registry.LOCAL_MACHINE
+		path = strings.TrimPrefix(trackrKey, `HKLM\`)
+	case strings.HasPrefix(trackrKey, `HKCU\`):
+		hive = registry.CURRENT_USER
+		path = strings.TrimPrefix(trackrKey, `HKCU\`)
+	}
+	k, err := registry.OpenKey(hive, path, registry.WRITE)
+	if err != nil {
+		return err
+	}
+	k.Close()
+	return nil
 }
 
 // DeleteKey removes an uninstall registry key given its trackr-formatted path
