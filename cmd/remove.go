@@ -112,6 +112,7 @@ func removeItem(it model.Item) error {
 
 	// ----- Execution -----
 	fmt.Println()
+	var actualFreed int64
 	switch {
 	case len(it.RemoveArgs) > 0:
 		out, err := runArgv(it.RemoveArgs)
@@ -123,6 +124,7 @@ func removeItem(it model.Item) error {
 			return nil
 		}
 		fmt.Printf("  ✓ Uninstalled %s\n", it.Name)
+		actualFreed += it.SizeBytes
 
 	case len(uninstallArgv) > 0:
 		_ = isMsi
@@ -138,21 +140,37 @@ func removeItem(it model.Item) error {
 		}
 	}
 
+	// Admin pre-check: removing an HKLM uninstall key requires elevation. If we
+	// cannot obtain write access, stop before deleting any folders — the user
+	// will need to re-run the whole command from an elevated terminal anyway.
+	if regKey != "" && registry.IsHKLM(regKey) {
+		if err := registry.CanWrite(regKey); err != nil {
+			fmt.Println(ui.OrphanStyle.Render("  ! Registry key is under HKLM — administrator rights required."))
+			fmt.Println(ui.OrphanStyle.Render("    Re-run trackr from an elevated terminal (right-click → Run as administrator)."))
+			return nil
+		}
+	}
+
 	// Folder cleanup.
 	for _, d := range dirs {
 		if !filesystem.Exists(d.path) {
 			fmt.Printf("  ✓ Folder already gone: %s\n", d.path)
+			actualFreed += d.size
 			continue
 		}
 		// For registry-based uninstalls the uninstaller may have left files.
 		prompt := fmt.Sprintf("  Delete remaining folder %s? [y/N]", d.path)
 		if it.Source == model.SourceFolder {
 			// Pure folder ghost — main confirm already covers it.
-			deleteDir(d.path)
+			if deleteDir(d.path) {
+				actualFreed += d.size
+			}
 			continue
 		}
 		if confirm(prompt) {
-			deleteDir(d.path)
+			if deleteDir(d.path) {
+				actualFreed += d.size
+			}
 		}
 	}
 
@@ -165,20 +183,21 @@ func removeItem(it model.Item) error {
 		}
 	}
 
-	fmt.Printf("  ✓ Freed ~%s\n\n", model.FormatSize(freed))
+	fmt.Printf("  ✓ Freed ~%s\n\n", model.FormatSize(actualFreed))
 	return nil
 }
 
-func deleteDir(path string) {
+func deleteDir(path string) bool {
 	if prot, reason := isProtectedPath(path); prot {
 		fmt.Printf("  ! Skipped protected path %s (%s)\n", path, reason)
-		return
+		return false
 	}
 	if err := os.RemoveAll(path); err != nil {
 		fmt.Printf("  ✗ Failed to delete %s: %v\n", path, err)
-		return
+		return false
 	}
 	fmt.Printf("  ✓ Deleted %s\n", path)
+	return true
 }
 
 func indent(s string) string {
