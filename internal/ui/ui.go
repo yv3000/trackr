@@ -323,7 +323,23 @@ func (m listModel) View() string {
 	if m.selectMode {
 		help = "  ↑/↓ move · enter select · q cancel"
 	}
-	b.WriteString("\n" + HelpStyle.Render(help))
+
+	// Build position indicator.
+	posIndicator := ""
+	if len(m.selIdx) > 0 {
+		// Show focused item position out of total selectable items.
+		posIndicator = fmt.Sprintf("[ %d/%d ]", m.cursor+1, len(m.selIdx))
+	} else if len(m.rows) > m.height {
+		// No selectable items (read-only list) — show row position instead.
+		posIndicator = fmt.Sprintf("[ %d/%d ]", m.top+1, len(m.rows))
+	}
+
+	helpLine := HelpStyle.Render(help)
+	if posIndicator != "" {
+		// Pad between help and indicator.
+		helpLine = helpLine + "   " + HelpStyle.Render(posIndicator)
+	}
+	b.WriteString("\n" + helpLine)
 	return b.String()
 }
 
