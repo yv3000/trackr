@@ -163,17 +163,6 @@ func removeItem(it model.Item) error {
 		}
 	}
 
-	// Admin pre-check: removing an HKLM uninstall key requires elevation. If we
-	// cannot obtain write access, stop before deleting any folders — the user
-	// will need to re-run the whole command from an elevated terminal anyway.
-	if regKey != "" && registry.IsHKLM(regKey) {
-		if err := registry.CanWrite(regKey); err != nil {
-			fmt.Println(ui.OrphanStyle.Render("  ! Registry key is under HKLM — administrator rights required."))
-			fmt.Println(ui.OrphanStyle.Render("    Re-run trackr from an elevated terminal (right-click → Run as administrator)."))
-			return nil
-		}
-	}
-
 	// Folder cleanup.
 	for _, d := range dirs {
 		if !filesystem.Exists(d.path) {
