@@ -118,7 +118,64 @@ func scanPip() ([]model.Item, []string) {
 			RemoveArgs: []string{"pip", "uninstall", "-y", p.Name},
 		})
 	}
+
+	// Calculate pip package sizes concurrently.
+	// First collect locations via `pip show` for each package.
+	type pipLoc struct {
+		idx      int
+		location string
+	}
+	locCh := make(chan pipLoc, len(items))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 8)
+
+	for i, it := range items {
+		wg.Add(1)
+		go func(idx int, pkgName string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			loc := PipLocation(pkgName)
+			locCh <- pipLoc{idx, loc}
+		}(i, it.Name)
+	}
+
+	go func() {
+		wg.Wait()
+		close(locCh)
+	}()
+
+	for pl := range locCh {
+		if pl.location != "" {
+			sz := pipPackageSize(items[pl.idx].Name, pl.location)
+			items[pl.idx].SizeBytes = sz
+		}
+	}
+
 	return items, nil
+}
+
+// pipPackageSize estimates the on-disk size of a pip package given the
+// site-packages location returned by `pip show`.
+func pipPackageSize(name, location string) int64 {
+	if location == "" {
+		return 0
+	}
+	// pip stores packages under the normalized name (hyphens → underscores).
+	normalized := strings.ReplaceAll(strings.ToLower(name), "-", "_")
+	candidates := []string{
+		filepath.Join(location, normalized),
+		filepath.Join(location, strings.ToLower(name)),
+		filepath.Join(location, name),
+	}
+	for _, p := range candidates {
+		if info, err := os.Stat(p); err == nil && info.IsDir() {
+			if sz, err := filesystem.DirSize(p); err == nil && sz > 0 {
+				return sz
+			}
+		}
+	}
+	return 0
 }
 
 func scanNpm() ([]model.Item, []string) {
