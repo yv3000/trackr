@@ -6,12 +6,15 @@ package pkgmanager
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 
+	"trackr/internal/filesystem"
 	"trackr/internal/model"
 )
 
