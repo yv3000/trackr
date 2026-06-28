@@ -86,6 +86,9 @@ func fmtExeRow(it model.Item) string {
 	} else if it.Status == model.StatusNoUninstall {
 		tag = " [no uninstall string]"
 	}
+	if it.SystemComponent {
+		tag += " [system component]"
+	}
 	return fmt.Sprintf("%-34s %-12s %10s  %s%s",
 		trunc(it.Name, 34), trunc(it.Version, 12),
 		model.FormatSize(it.SizeBytes), trunc(dir, 48), tag)
