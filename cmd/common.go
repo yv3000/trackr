@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"trackr/internal/db"
 	"trackr/internal/filesystem"
 	"trackr/internal/model"
 	"trackr/internal/orphan"
@@ -30,6 +31,31 @@ func runFullScan(status chan<- string) ui.ScanResult {
 
 	status <- "Detecting orphaned installs..."
 	regGhosts, folderGhosts := orphan.Detect(exe, folders)
+
+	// Persist discovered package-manager items to the local history DB. We only
+	// log pkg-manager items (the ones users actively install); EXE/registry
+	// software predates trackr and is intentionally not recorded here.
+	status <- "Saving discovered packages to trackr history..."
+	if database, err := db.Open(); err == nil {
+		defer database.Close()
+		existing, _ := database.ListInstalls()
+		seen := map[string]bool{}
+		for _, e := range existing {
+			seen[e.Tool+":"+e.Name] = true
+		}
+		for _, it := range pkg {
+			key := it.Tool + ":" + it.Name
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			database.AddInstall(db.Install{
+				Name:    it.Name,
+				Tool:    it.Tool,
+				Command: it.Command,
+			})
+		}
+	}
 
 	notes := make([]string, 0, len(pkgNotes)+len(regNotes)+len(fsNotes))
 	notes = append(notes, pkgNotes...)
