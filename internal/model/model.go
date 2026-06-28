@@ -54,6 +54,7 @@ type Item struct {
 	Source          string   `json:"source"`
 	OrphanType      string   `json:"orphan_type,omitempty"`
 	StoreApp        bool     `json:"store_app,omitempty"`
+	SystemComponent bool     `json:"system_component,omitempty"`
 }
 
 // FormatSize renders a byte count as a human friendly string.
