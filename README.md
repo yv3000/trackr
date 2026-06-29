@@ -10,6 +10,35 @@
 
 ---
 
+## Install
+
+```powershell
+irm https://raw.githubusercontent.com/yv3000/trackr/main/install.ps1 | iex
+```
+
+Restart terminal after install, then run `trackr`.
+
+### Manual install
+Download `trackr.exe` from [Releases](https://github.com/yv3000/trackr/releases),
+place it anywhere, add that folder to your PATH.
+
+---
+
+## ME OPEN BIG SCREEN (the dashboard)
+
+Just type one word, no command:
+
+```
+trackr
+```
+
+Big full-screen cave-dashboard open. Arrow key up/down. Enter to pick. Menu give you:
+Scan everything · Where is... · Remove something · View orphans · Install log · Quit.
+`esc`/`q` in any inner screen go back to menu. `ctrl+c` smash app shut.
+All the old command (`trackr scan`, `trackr where`, `trackr remove`, `trackr log`) still work same.
+
+---
+
 ## WHAT TRACKR DO (the grunt explanation)
 
 You install many thing. pip thing. npm thing. big .exe thing. Then you forget.
