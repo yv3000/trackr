@@ -161,6 +161,20 @@ Stack inside trackr:
 
 Database live at `%USERPROFILE%\.trackr\trackr.db`.
 
+### ME SHIP NEW VERSION (auto-release on tag)
+
+trackr use GitHub Actions. You push a tag like `v1.0.0`, robot build `trackr.exe`
+on real Windows machine and make a Release with exe attached. `install.ps1` grab
+from that Release. To cut first release:
+
+```bash
+# after all code on main:
+git tag v1.0.0
+git push origin v1.0.0
+# GitHub Actions build + release in ~2 minutes
+# then the irm one-liner installer work
+```
+
 ---
 
 ## THING TRACKR CANNOT DO (no get angry)
