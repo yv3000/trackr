@@ -9,16 +9,11 @@ import (
 	"time"
 )
 
-// TestScheduleSelfDeleteSpacedPath proves the detached self-delete helper:
-//   - spawns under DETACHED_PROCESS and survives independently,
-//   - correctly quotes a path containing spaces (the trackr repo + some
-//     usernames live under spaced paths),
-//   - deletes the target exe and rmdir's the now-empty bin/.trackr folders.
-//
-// Note: this uses an unlocked dummy file. The "delete a still-running exe"
-// aspect relies on Windows releasing the file handle when the real process
-// exits (OS behaviour, not our code); what this test covers is our spawn +
-// delay + del + rmdir mechanism and its quoting.
+// TestScheduleSelfDeleteSpacedPath exercises the real scheduleSelfDelete:
+// detached helper, ping delay, and the cmd /s /c quoting fix, against a path
+// that contains spaces. Proves the exe is deleted and the empty bin/.trackr
+// dirs are rmdir'd. (Uses an unlocked dummy file; the "delete a running exe"
+// part relies on Windows releasing the handle on process exit.)
 func TestScheduleSelfDeleteSpacedPath(t *testing.T) {
 	base := t.TempDir()
 	trackrDir := filepath.Join(base, "user with space", ".trackr")
@@ -35,7 +30,6 @@ func TestScheduleSelfDeleteSpacedPath(t *testing.T) {
 		t.Fatalf("scheduleSelfDelete returned error: %v", err)
 	}
 
-	// Helper waits ~1s (ping -n 2) then deletes; poll up to 15s.
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(exePath); os.IsNotExist(err) {
@@ -48,7 +42,6 @@ func TestScheduleSelfDeleteSpacedPath(t *testing.T) {
 		t.Fatalf("exe was NOT deleted by detached helper: %s still exists", exePath)
 	}
 	t.Logf("OK: detached helper deleted spaced-path exe: %s", exePath)
-
 	if _, err := os.Stat(binDir); !os.IsNotExist(err) {
 		t.Errorf("bin dir not removed by rmdir: %s", binDir)
 	}

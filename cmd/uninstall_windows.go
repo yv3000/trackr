@@ -45,19 +45,27 @@ func removeFromUserPath(dir string) error {
 
 // scheduleSelfDelete spawns a detached helper process that waits for this
 // process to exit, then deletes the exe and cleans up empty parent dirs.
-// Uses `cmd /c` with a ping-based delay (no extra dependency needed) and
-// `rmdir`/`del` to clean up, fully detached so it survives this process exit.
+// Uses a ping-based delay (no extra dependency needed) and `del`/`rmdir`,
+// fully detached so it survives this process exit.
 func scheduleSelfDelete(exePath, binDir, trackrDir string) error {
 	// ping -n 2 gives ~1 second delay, enough for this process to fully exit
-	// and release the file handle on the exe.
-	script := fmt.Sprintf(
+	// and release the file handle on the exe before del runs.
+	inner := fmt.Sprintf(
 		`ping -n 2 127.0.0.1 >nul & del /f /q "%s" & rmdir "%s" 2>nul & rmdir "%s" 2>nul`,
 		exePath, binDir, trackrDir,
 	)
-	cmd := exec.Command("cmd", "/c", script)
+
+	// Build the command line by hand. If exec builds it from args, Go escapes
+	// the inner path quotes as \" which cmd.exe misparses ("The filename,
+	// directory name, or volume label syntax is incorrect." -> exit 123),
+	// breaking deletion — worst of all for paths containing spaces. With
+	// `cmd /s /c "<inner>"`, cmd's /s rule strips only the outermost pair of
+	// quotes and runs the rest verbatim, so the quoted paths survive intact.
+	cmd := exec.Command("cmd")
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
 		CreationFlags: 0x00000008, // DETACHED_PROCESS
+		CmdLine:       fmt.Sprintf(`cmd /s /c "%s"`, inner),
 	}
 	return cmd.Start()
 }
