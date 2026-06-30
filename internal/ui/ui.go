@@ -481,6 +481,52 @@ func (m listModel) View() string {
 	return b.String()
 }
 
+// buildScrollbar returns a slice of strings, one per visible row, each
+// containing a single scrollbar character for that row position. The
+// thumb (highlighted block) represents the currently visible window
+// relative to the total list length.
+func buildScrollbar(totalRows, visibleHeight, topOffset int) []string {
+	bar := make([]string, visibleHeight)
+
+	// If everything fits on screen, no scrollbar needed — render blank.
+	if totalRows <= visibleHeight {
+		for i := range bar {
+			bar[i] = " "
+		}
+		return bar
+	}
+
+	// Track style: a dim vertical line for the full height.
+	trackChar := "│"
+	thumbChar := "█"
+
+	// Calculate thumb size and position proportionally.
+	thumbSize := int(float64(visibleHeight*visibleHeight) / float64(totalRows))
+	if thumbSize < 1 {
+		thumbSize = 1
+	}
+	maxThumbStart := visibleHeight - thumbSize
+	thumbStart := 0
+	if totalRows > visibleHeight {
+		thumbStart = int(float64(topOffset) / float64(totalRows-visibleHeight) * float64(maxThumbStart))
+	}
+	if thumbStart > maxThumbStart {
+		thumbStart = maxThumbStart
+	}
+	if thumbStart < 0 {
+		thumbStart = 0
+	}
+
+	for i := 0; i < visibleHeight; i++ {
+		if i >= thumbStart && i < thumbStart+thumbSize {
+			bar[i] = lipgloss.NewStyle().Foreground(lipgloss.Color("#185FA5")).Render(thumbChar)
+		} else {
+			bar[i] = lipgloss.NewStyle().Foreground(ColorDim).Render(trackChar)
+		}
+	}
+	return bar
+}
+
 // RunList displays an interactive list. When selectMode is true, the returned
 // pointer is the item the user chose with Enter (nil if they cancelled).
 func RunList(title string, rows []Row, selectMode bool) (*model.Item, error) {
