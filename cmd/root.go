@@ -10,7 +10,9 @@ import (
 	"trackr/internal/ui"
 )
 
-const version = "0.1.0"
+// version is set at build time via -ldflags. Defaults to "dev" for local
+// builds that don't pass the flag.
+var version = "dev"
 
 var rootCmd = &cobra.Command{
 	Use:           "trackr",

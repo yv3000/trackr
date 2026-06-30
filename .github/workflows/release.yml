@@ -23,7 +23,8 @@ jobs:
 
       - name: Build trackr.exe
         run: |
-          go build -ldflags="-s -w" -o trackr.exe .
+          $tag = "${{ github.ref_name }}"
+          go build -ldflags="-s -w -X trackr/cmd.version=$tag" -o trackr.exe .
         shell: pwsh
 
       - name: Create GitHub Release
