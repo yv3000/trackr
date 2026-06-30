@@ -423,8 +423,32 @@ func (m listModel) View() string {
 	if end > len(visible) {
 		end = len(visible)
 	}
+
+	scrollbar := buildScrollbar(len(visible), m.height, m.top)
+
+	// Determine the terminal width to right-align the scrollbar. Fall back
+	// to a sane default if width isn't tracked yet.
+	termWidth := m.width
+	if termWidth <= 0 {
+		termWidth = 100
+	}
+
+	rowIdx := 0
 	for pos := m.top; pos < end; pos++ {
-		b.WriteString(m.renderRow(pos, visible[pos]) + "\n")
+		rowText := m.renderRow(pos, visible[pos])
+		// Pad the row out to termWidth-2 so the scrollbar lands at a
+		// consistent right-hand column regardless of row content length.
+		plainLen := lipgloss.Width(rowText)
+		padding := termWidth - plainLen - 2
+		if padding < 1 {
+			padding = 1
+		}
+		bar := " "
+		if rowIdx < len(scrollbar) {
+			bar = scrollbar[rowIdx]
+		}
+		b.WriteString(rowText + strings.Repeat(" ", padding) + bar + "\n")
+		rowIdx++
 	}
 	if len(visible) == 0 {
 		b.WriteString(NoteStyle.Render("  (no matches)") + "\n")
