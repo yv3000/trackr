@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	"trackr/internal/model"
@@ -76,5 +77,53 @@ func TestMoveCursorReadOnlySkipsDecorative(t *testing.T) {
 	m.moveCursor(-1)
 	if m.cursorPos != 2 {
 		t.Errorf("cursor went past top: got %d, want 2", m.cursorPos)
+	}
+}
+
+
+
+func isThumb(s string) bool { return strings.Contains(s, "█") }
+func isTrack(s string) bool { return strings.Contains(s, "│") }
+
+func TestBuildScrollbarFitsOnScreen(t *testing.T) {
+	// Everything fits: no scrollbar (all blanks, no track/thumb glyphs).
+	bar := buildScrollbar(10, 20, 0)
+	if len(bar) != 20 {
+		t.Fatalf("len = %d, want 20", len(bar))
+	}
+	for i, c := range bar {
+		if isThumb(c) || isTrack(c) {
+			t.Errorf("row %d should be blank when content fits, got %q", i, c)
+		}
+	}
+}
+
+func TestBuildScrollbarThumbPosition(t *testing.T) {
+	total, height := 246, 30
+
+	// At the very top, the thumb must include the first row.
+	top := buildScrollbar(total, height, 0)
+	if !isThumb(top[0]) {
+		t.Errorf("thumb should be at the top when topOffset=0")
+	}
+	if isThumb(top[height-1]) {
+		t.Errorf("bottom should be track (not thumb) when scrolled to top")
+	}
+
+	// Scrolled to the bottom, the thumb must include the last row.
+	bottom := buildScrollbar(total, height, total-height)
+	if !isThumb(bottom[height-1]) {
+		t.Errorf("thumb should reach the bottom when fully scrolled")
+	}
+
+	// Thumb is proportional: ~height*height/total = 30*30/246 ≈ 3 rows.
+	count := 0
+	for _, c := range top {
+		if isThumb(c) {
+			count++
+		}
+	}
+	if count < 1 || count > 6 {
+		t.Errorf("thumb size = %d rows, expected a small proportional thumb (~3)", count)
 	}
 }
