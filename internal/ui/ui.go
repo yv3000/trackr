@@ -192,116 +192,212 @@ type Row struct {
 }
 
 type listModel struct {
-	title      string
-	rows       []Row
-	selIdx     []int
-	cursor     int
-	top        int
-	height     int
-	selectMode bool
-	chosen     *model.Item
-	quit       bool
+	title       string
+	rows        []Row
+	cursorPos   int // position within the currently-visible row list
+	top         int // scroll offset within the visible row list
+	height      int
+	selectMode  bool
+	chosen      *model.Item
+	quit        bool
+	searching   bool
+	searchQuery string
+	filtered    []int // row indices matching searchQuery; nil = no filter
 }
 
 func newListModel(title string, rows []Row, selectMode bool) listModel {
-	var sel []int
-	for i, r := range rows {
-		if r.Item != nil {
-			sel = append(sel, i)
-		}
-	}
-	return listModel{
+	m := listModel{
 		title:      title,
 		rows:       rows,
-		selIdx:     sel,
 		height:     20,
 		selectMode: selectMode,
 	}
+	if np := m.navPositions(); len(np) > 0 {
+		m.cursorPos = np[0]
+	}
+	return m
 }
 
 func (m listModel) Init() tea.Cmd { return nil }
 
+// visibleRowIndices returns the row indices currently shown, honoring any
+// active search filter.
+func (m *listModel) visibleRowIndices() []int {
+	if m.filtered != nil {
+		return m.filtered
+	}
+	out := make([]int, len(m.rows))
+	for i := range m.rows {
+		out[i] = i
+	}
+	return out
+}
+
+// navPositions returns the positions (within the visible list) that the cursor
+// may land on — i.e. rows that are neither headers nor separators.
+func (m *listModel) navPositions() []int {
+	visible := m.visibleRowIndices()
+	var pos []int
+	for p, rowIdx := range visible {
+		r := m.rows[rowIdx]
+		if !r.Header && !r.Separator {
+			pos = append(pos, p)
+		}
+	}
+	return pos
+}
+
 func (m *listModel) ensureVisible() {
-	if len(m.selIdx) == 0 {
-		return
+	if m.cursorPos < m.top {
+		m.top = m.cursorPos
 	}
-	target := m.selIdx[m.cursor]
-	if target < m.top {
-		m.top = target
-	}
-	if target >= m.top+m.height {
-		m.top = target - m.height + 1
+	if m.cursorPos >= m.top+m.height {
+		m.top = m.cursorPos - m.height + 1
 	}
 	if m.top < 0 {
 		m.top = 0
 	}
 }
 
+// moveCursor advances the cursor to the next/previous navigable position,
+// skipping header and separator rows.
+func (m *listModel) moveCursor(dir int) {
+	np := m.navPositions()
+	if len(np) == 0 {
+		return
+	}
+	cur := -1
+	for i, p := range np {
+		if p == m.cursorPos {
+			cur = i
+			break
+		}
+	}
+	if cur == -1 {
+		m.cursorPos = np[0]
+	} else if ni := cur + dir; ni >= 0 && ni < len(np) {
+		m.cursorPos = np[ni]
+	}
+	m.ensureVisible()
+}
+
+func (m *listModel) applyFilter() {
+	if m.searchQuery == "" {
+		m.filtered = nil
+	} else {
+		q := strings.ToLower(m.searchQuery)
+		m.filtered = nil
+		for i, r := range m.rows {
+			if r.Header || r.Separator {
+				continue
+			}
+			if strings.Contains(strings.ToLower(r.Text), q) {
+				m.filtered = append(m.filtered, i)
+			}
+		}
+	}
+	m.top = 0
+	if np := m.navPositions(); len(np) > 0 {
+		m.cursorPos = np[0]
+	} else {
+		m.cursorPos = 0
+	}
+}
+
 func (m listModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		h := msg.Height - 5
+		h := msg.Height - 6
 		if h < 5 {
 			h = 5
 		}
 		m.height = h
 		m.ensureVisible()
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q", "esc":
+		key := msg.String()
+		if key == "ctrl+c" {
 			m.quit = true
 			return m, tea.Quit
+		}
+
+		// While typing a search query, capture keys for the query.
+		if m.searching {
+			switch key {
+			case "esc":
+				m.searching = false
+				m.searchQuery = ""
+				m.applyFilter()
+			case "enter":
+				m.searching = false // keep the filter applied, just exit input mode
+			case "backspace":
+				if len(m.searchQuery) > 0 {
+					m.searchQuery = m.searchQuery[:len(m.searchQuery)-1]
+				}
+				m.applyFilter()
+			default:
+				if len([]rune(key)) == 1 {
+					m.searchQuery += key
+					m.applyFilter()
+				}
+			}
+			return m, nil
+		}
+
+		switch key {
+		case "q":
+			m.quit = true
+			return m, tea.Quit
+		case "esc":
+			if m.filtered != nil {
+				// Clear the active filter rather than quitting.
+				m.searchQuery = ""
+				m.applyFilter()
+				return m, nil
+			}
+			m.quit = true
+			return m, tea.Quit
+		case "/":
+			m.searching = true
+			m.searchQuery = ""
+			return m, nil
 		case "up", "k":
-			if len(m.selIdx) > 0 && m.cursor > 0 {
-				m.cursor--
-				m.ensureVisible()
-			} else if len(m.selIdx) == 0 && m.top > 0 {
-				m.top--
-			}
+			m.moveCursor(-1)
 		case "down", "j":
-			if len(m.selIdx) > 0 && m.cursor < len(m.selIdx)-1 {
-				m.cursor++
-				m.ensureVisible()
-			} else if len(m.selIdx) == 0 && m.top < len(m.rows)-m.height {
-				m.top++
-			}
+			m.moveCursor(1)
 		case "enter":
-			if m.selectMode && len(m.selIdx) > 0 {
-				it := m.rows[m.selIdx[m.cursor]].Item
-				m.chosen = it
-				m.quit = true
-				return m, tea.Quit
+			if m.selectMode {
+				visible := m.visibleRowIndices()
+				if m.cursorPos < len(visible) {
+					if it := m.rows[visible[m.cursorPos]].Item; it != nil {
+						m.chosen = it
+						m.quit = true
+						return m, tea.Quit
+					}
+				}
 			}
 		}
 	}
 	return m, nil
 }
 
-func (m listModel) renderRow(idx int, r Row) string {
+func (m listModel) renderRow(pos, rowIdx int) string {
+	r := m.rows[rowIdx]
 	switch {
 	case r.Separator:
 		return DividerStyle.Render("  " + strings.Repeat("─", 58))
 	case r.Header:
 		return SectionStyle.Render("  " + r.Text)
 	}
-	selected := m.selectMode && len(m.selIdx) > 0 && m.selIdx[m.cursor] == idx
+	selected := pos == m.cursorPos
 	prefix := "    "
-	if m.selectMode {
-		prefix = "    "
-		if selected {
-			prefix = "  ▸ "
-		}
+	if m.selectMode && selected {
+		prefix = "  ▸ "
 	}
 	if selected {
-		// High-visibility selection: blue background, white text, bold.
-		selectedStyle := lipgloss.NewStyle().
-			Background(lipgloss.Color("#185FA5")).
-			Foreground(lipgloss.Color("#FFFFFF")).
-			Bold(true)
-		return selectedStyle.Render(prefix + r.Text)
+		// High-visibility position highlight (works in read-only lists too).
+		return menuSelectedStyle.Render(prefix + r.Text)
 	}
-	style := toneStyle(r.Tone)
-	return style.Render(prefix + r.Text)
+	return toneStyle(r.Tone).Render(prefix + r.Text)
 }
 
 func (m listModel) View() string {
@@ -309,34 +405,50 @@ func (m listModel) View() string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString(TitleStyle.Render("  "+m.title) + "\n\n")
+	b.WriteString(TitleStyle.Render("  "+m.title) + "\n")
 
+	if m.searching || m.searchQuery != "" {
+		searchBar := fmt.Sprintf("  / %s█", m.searchQuery)
+		if !m.searching {
+			searchBar = fmt.Sprintf("  / %s  (esc to clear)", m.searchQuery)
+		}
+		b.WriteString(HelpStyle.Render(searchBar) + "\n")
+	}
+	b.WriteString("\n")
+
+	visible := m.visibleRowIndices()
 	end := m.top + m.height
-	if end > len(m.rows) {
-		end = len(m.rows)
+	if end > len(visible) {
+		end = len(visible)
 	}
-	for i := m.top; i < end; i++ {
-		b.WriteString(m.renderRow(i, m.rows[i]) + "\n")
+	for pos := m.top; pos < end; pos++ {
+		b.WriteString(m.renderRow(pos, visible[pos]) + "\n")
+	}
+	if len(visible) == 0 {
+		b.WriteString(NoteStyle.Render("  (no matches)") + "\n")
 	}
 
-	help := "  ↑/↓ scroll · q quit"
+	help := "  ↑/↓ scroll · / search · q quit"
 	if m.selectMode {
-		help = "  ↑/↓ move · enter select · q cancel"
+		help = "  ↑/↓ navigate · enter select · / search · q quit"
 	}
 
-	// Build position indicator.
+	// Build position indicator (cursor rank out of navigable rows).
 	posIndicator := ""
-	if len(m.selIdx) > 0 {
-		// Show focused item position out of total selectable items.
-		posIndicator = fmt.Sprintf("[ %d/%d ]", m.cursor+1, len(m.selIdx))
-	} else if len(m.rows) > m.height {
-		// No selectable items (read-only list) — show row position instead.
-		posIndicator = fmt.Sprintf("[ %d/%d ]", m.top+1, len(m.rows))
+	np := m.navPositions()
+	if len(np) > 0 {
+		rank := 0
+		for i, p := range np {
+			if p == m.cursorPos {
+				rank = i + 1
+				break
+			}
+		}
+		posIndicator = fmt.Sprintf("[ %d/%d ]", rank, len(np))
 	}
 
 	helpLine := HelpStyle.Render(help)
 	if posIndicator != "" {
-		// Pad between help and indicator.
 		helpLine = helpLine + "   " + HelpStyle.Render(posIndicator)
 	}
 	b.WriteString("\n" + helpLine)
