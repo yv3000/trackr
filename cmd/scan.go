@@ -62,12 +62,76 @@ func printJSON(res ui.ScanResult) error {
 		"installed_software": res.Exe,
 		"folders":            res.Folders,
 		"registry_ghosts":    res.RegistryGhosts,
-		"folder_ghosts":      res.FolderGhosts,
+		"folder_ghosts":      filterFolderGhosts(res.FolderGhosts, res.Pkg),
 		"notes":              res.Notes,
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(out)
+}
+
+// orphanScanExcludeNames are folder names that are caches, SDK internals or
+// framework infrastructure — never installed software, so never folder-ghosts.
+var orphanScanExcludeNames = map[string]bool{
+	"temp":                 true,
+	"tmp":                  true,
+	"cache":                true,
+	"npm-cache":            true,
+	".npm":                 true,
+	"npm":                  true,
+	"pip":                  true,
+	"wsl":                  true,
+	"packages":             true,
+	"package cache":        true,
+	"reference assemblies": true,
+	"microsoft sdks":       true,
+	"microsoft.net":        true,
+	"msecache":             true,
+	"nvidia corporation":   true,
+	"go-build":             true,
+	"pub":                  true,
+	"comms":                true,
+	"programs":             true, // AppData\Local\Programs is a container, not software
+}
+
+// orphanScanExcludeSuffixes catch auto-update / builder / cache folders.
+var orphanScanExcludeSuffixes = []string{
+	"-updater",
+	"-builder",
+	"-cache",
+}
+
+func shouldExcludeFromOrphanScan(folderName string) bool {
+	lower := strings.ToLower(folderName)
+	if orphanScanExcludeNames[lower] {
+		return true
+	}
+	for _, suffix := range orphanScanExcludeSuffixes {
+		if strings.HasSuffix(lower, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+// filterFolderGhosts removes infrastructure/cache folders and any folder whose
+// name matches a package-manager tool already detected on the system.
+func filterFolderGhosts(ghosts, pkgItems []model.Item) []model.Item {
+	detectedTools := map[string]bool{}
+	for _, p := range pkgItems {
+		detectedTools[strings.ToLower(p.Tool)] = true
+	}
+	out := make([]model.Item, 0, len(ghosts))
+	for _, g := range ghosts {
+		if shouldExcludeFromOrphanScan(g.Name) {
+			continue
+		}
+		if detectedTools[strings.ToLower(g.Name)] {
+			continue
+		}
+		out = append(out, g)
+	}
+	return out
 }
 
 func fmtPkgRow(it model.Item) string {
