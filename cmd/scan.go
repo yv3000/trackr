@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -145,7 +146,7 @@ func showScan(res ui.ScanResult) error {
 
 func showOrphans(res ui.ScanResult) error {
 	rg := sortItems(res.RegistryGhosts, scanSort)
-	fg := sortItems(res.FolderGhosts, scanSort)
+	fg := sortItems(filterFolderGhosts(res.FolderGhosts, res.Pkg), scanSort)
 
 	var rows []ui.Row
 	rows = append(rows,
