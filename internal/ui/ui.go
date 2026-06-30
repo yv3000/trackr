@@ -197,6 +197,7 @@ type listModel struct {
 	cursorPos   int // position within the currently-visible row list
 	top         int // scroll offset within the visible row list
 	height      int
+	width       int
 	selectMode  bool
 	chosen      *model.Item
 	quit        bool
@@ -312,6 +313,7 @@ func (m listModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			h = 5
 		}
 		m.height = h
+		m.width = msg.Width
 		m.ensureVisible()
 	case tea.KeyMsg:
 		key := msg.String()
